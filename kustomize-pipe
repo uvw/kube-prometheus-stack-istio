@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Using the environment variable to pass the overlay path for kustomize because
+# Helm post-renderer hooks does not support arguments yet.
+# Watch https://github.com/helm/helm/issues/7849 for developments.
+[[ -z $OVERLAY ]] && OVERLAY=.
+
+cat <&0 > helm.generated.yaml && kustomize build $OVERLAY && echo > helm.generated.yaml

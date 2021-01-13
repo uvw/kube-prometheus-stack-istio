@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: metrics
+
+resources:
+- helm.generated.yaml
+- networking.yaml
+
+patches:
+# Apply mTLS patch to selected service monitors to use the injected mTLS
+# certificates:
+- target:
+    kind: ServiceMonitor
+    name: ".*-kube-prometheus-kube-state-metrics\
+          |.*-kube-prometheus-operator\
+          |.*-kube-prometheus-grafana\
+          |.*-kube-prometheus-operated-services"
+  patch: |-
+    - op: replace
+      path: /spec/endpoints/0/scheme
+      value: https
+    - op: replace
+      path: /spec/endpoints/0/tlsConfig
+      value:
+        caFile: /etc/istio-certs/root-cert.pem
+        certFile: /etc/istio-certs/cert-chain.pem
+        keyFile: /etc/istio-certs/key.pem
+        insecureSkipVerify: true
+# Add appProtocol=http to Service.spec.ports[0] port of the known services
+# to fix Istio protocol selection:
+# https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection
+- target:
+    kind: Service
+    name: ".*-prometheus-node-exporter\
+          |.*-kube-prometheus-alertmanager\
+          |.*-kube-prometheus-coredns\
+          |.*-kube-prometheus-prometheus\
+          |.*-kube-state-metrics\
+          |.*-grafana"
+  patch: |-
+    - op: add
+      path: /spec/ports/0/appProtocol
+      value: http

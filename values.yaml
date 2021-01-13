@@ -1,0 +1,82 @@
+prometheusOperator:
+  podAnnotations:
+    sidecar.istio.io/inject: 'false'
+    galley.istio.io/analyze-suppress: IST0103 # No sidecar
+
+  admissionWebhooks:
+    patch:
+      podAnnotations:
+        sidecar.istio.io/inject: 'false'
+        galley.istio.io/analyze-suppress: IST0103 # No sidecar
+
+prometheus:
+  prometheusSpec:
+    # Override auto-generated `alertingEndpoints` with mTLS certs:
+    alertingEndpoints:
+    - name: prometheus-kube-prometheus-alertmanager
+      namespace: metrics
+      port: http-web
+      pathPrefix: /
+      apiVersion: v2
+      scheme: https
+      tlsConfig:
+        caFile: /etc/istio-certs/root-cert.pem
+        keyFile: /etc/istio-certs/key.pem
+        certFile: /etc/istio-certs/cert-chain.pem
+        insecureSkipVerify: true
+
+    volumeMounts:
+    - name: istio-certs
+      mountPath: /etc/istio-certs/
+      readOnly: true
+
+    podMetadata:
+      # Write Istio certificates to a volume accessible by Prometheus:
+      annotations:
+        sidecar.istio.io/rewriteAppHTTPProbers: 'true'
+        sidecar.istio.io/userVolume: '[{"name": "istio-certs", "emptyDir": {"medium": "Memory"}}]'
+        sidecar.istio.io/userVolumeMount: '[{"name": "istio-certs", "mountPath": "/etc/istio-certs/"}]'
+        proxy.istio.io/config: |-
+          proxyMetadata:
+            OUTPUT_CERTS: /etc/istio-certs/
+
+alertmanager:
+  alertmanagerSpec:
+    podMetadata:
+      annotations:
+        sidecar.istio.io/rewriteAppHTTPProbers: 'true'
+        traffic.sidecar.istio.io/excludeInboundPorts: '9094'  # Cluster autodiscovery.
+        traffic.sidecar.istio.io/excludeOutboundPorts: '9094' # Cluster autodiscovery.
+
+  serviceMonitor:
+    scheme: https
+    tlsConfig:
+      caFile: /etc/istio-certs/root-cert.pem
+      keyFile: /etc/istio-certs/key.pem
+      certFile: /etc/istio-certs/cert-chain.pem
+      insecureSkipVerify: true
+
+kube-state-metrics:
+  podAnnotations:
+    sidecar.istio.io/rewriteAppHTTPProbers: 'true'
+
+grafana:
+  podAnnotations:
+    sidecar.istio.io/rewriteAppHTTPProbers: 'true'
+
+prometheus-node-exporter:
+  nodeSelector:
+    beta.kubernetes.io/os: linux
+  podAnnotations:
+    galley.istio.io/analyze-suppress: IST0103 # No sidecar
+
+# These components are running on the AKS master nodes and not accessible by my deployments.
+# However, this patching approach can be applied to them as well.
+kubeProxy:
+  enabled: false # Enable once https://github.com/Azure/AKS/issues/1695 is released
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
